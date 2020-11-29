@@ -114,10 +114,13 @@
     ['TRUE (if neg 'FALSE 'TRUE)]
     ['FALSE (if neg 'TRUE 'FALSE)]
     [(? constant?) expr]
-    [(? number?) expr]
+    [(or (? number?) (? hex?)) expr]
     [(? symbol?) (if neg `(not ,expr) expr)]
     [`(let ([,vars ,vals] ...) ,body)
      `(let (,@(for/list ([var vars] [val vals]) (list var (canonicalize val))))
+        ,(canonicalize body #:neg neg))]
+    [`(let* ([,vars ,vals] ...) ,body)
+     `(let* (,@(for/list ([var vars] [val vals]) (list var (canonicalize val))))
         ,(canonicalize body #:neg neg))]
     [(list (and (or '== '< '> '<= '>=) op) args ...)
      (define args* (map canonicalize args))

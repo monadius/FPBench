@@ -8,7 +8,7 @@
   (supported-list
     (invert-op-proc 
       (curry set-member?
-             '(atan2 cbrt ceil copysign erf erfc exp2 expm1 fdim floor fmod hypot if let* 
+             '(atan2 cbrt ceil copysign erf erfc exp2 expm1 fdim floor fmod hypot if 
               lgamma log10 log1p log2 nearbyint pow remainder round tgamma trunc while while*)))
     fpcore-consts
     (curry set-member? '(binary16 binary32 binary64 binary128 real))
@@ -126,8 +126,16 @@
       (define ctx*
         (for/fold ([ctx* ctx]) ([var vars] [val vals])
           (let-values ([(cx name) (ctx-unique-name ctx* var)])
-           (add-def (format "~a ~a= ~a" name (round->fptaylor (ctx-props cx))
+            (add-def (format "~a ~a= ~a" name (round->fptaylor (ctx-props ctx))
                       (expr->fptaylor val #:ctx ctx #:inexact-scale inexact-scale)))
+            cx)))
+     (expr->fptaylor body #:ctx ctx* #:inexact-scale inexact-scale)]
+    [`(let* ([,vars ,vals] ...) ,body)
+      (define ctx*
+        (for/fold ([ctx* ctx]) ([var vars] [val vals])
+          (let-values ([(cx name) (ctx-unique-name ctx* var)])
+            (add-def (format "~a ~a= ~a" name (round->fptaylor (ctx-props ctx*))
+                      (expr->fptaylor val #:ctx ctx* #:inexact-scale inexact-scale)))
             cx)))
      (expr->fptaylor body #:ctx ctx* #:inexact-scale inexact-scale)]
     [`(! ,props ... ,body)
@@ -205,13 +213,10 @@
     ; A special property :var-precision
     (define var-type
       (if var-precision var-precision (dict-ref (ctx-props ctx) ':var-precision 'real)))
-    ;;; (define name* (dict-ref (ctx-props ctx) ':name name))
     (define pre ((compose canonicalize remove-let)
                  (dict-ref (ctx-props ctx) ':pre 'TRUE)))
-    (define body* (canonicalize body))
-
     ; Main expression
-    (define expr-body (expr->fptaylor body* #:ctx ctx* #:inexact-scale inexact-scale))
+    (define expr-body (expr->fptaylor body #:ctx ctx* #:inexact-scale inexact-scale))
     ; Ranges of variables
     (define var-ranges (condition->range-table pre))
     (define arg-strings
