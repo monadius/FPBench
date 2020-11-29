@@ -113,10 +113,10 @@
       (format "~a~a" (round->fptaylor props) n-str)
       n-str))
 
-(define *defs* (make-parameter (box '())))
+(define *defs* (make-parameter '()))
 
 (define (add-def def)
-  (set-box! (*defs*) (cons def (unbox (*defs*)))))
+  (*defs* (cons def (*defs*))))
 
 (define (expr->fptaylor expr #:ctx ctx
                         #:inexact-scale [inexact-scale 1])
@@ -185,7 +185,8 @@
                          #:indent [indent "\t"])
   (parameterize ([*gensym-fix-name* fix-name]
                  [*used-names* (mutable-set)]
-                 [*gensym-collisions* 1])
+                 [*gensym-collisions* 1]
+                 [*defs* '()])
     (define-values (core-name args props body)
       (match prog
         [(list 'FPCore (list args ...) props ... body) (values name args props body)]
@@ -209,47 +210,46 @@
                  (dict-ref (ctx-props ctx) ':pre 'TRUE)))
     (define body* (canonicalize body))
 
-    (parameterize ([*defs* (box '())])
-      ; Main expression
-      (define expr-body (expr->fptaylor body* #:ctx ctx* #:inexact-scale inexact-scale))
-      ; Ranges of variables
-      (define var-ranges (condition->range-table pre))
-      (define arg-strings
-        (for/list ([var args] [var-name var-names])
-          (define range
-            (cond
-              [(and var-ranges (hash-has-key? var-ranges var)) (dict-ref var-ranges var)]
-              [else (make-interval -inf.0 +inf.0)]))
-          (unless (nonempty-bounded? range)
-            (error 'core->fptaylor "Bad range for ~a in ~a (~a)" var expr-name range))
-          (unless (= (length range) 1)
-            (print range)
-            (error 'core->fptaylor "FPTaylor only accepts one sampling range"))
-          (match-define (interval l u l? u?) (car range))
-          (format "~a~a ~a in [~a, ~a];" indent (round->fptaylor (ctx-props ctx)) var-name
-                  (format-number l) (format-number u))))
-      ; Other constraints
-      ;;; (define constraints
-      ;;;   (map (curry expr->fptaylor #:type 'real) (select-constraints pre)))
-      (with-output-to-string
-          (λ ()
-            (printf "{\n")
-            (unless (empty? arg-strings)
-              (printf "Variables\n~a\n\n" (string-join arg-strings "\n")))
-            ;;; (unless (empty? constraints)
-            ;;;   (printf "Constraints\n")
-            ;;;   (for ([c constraints] [n (in-naturals)])
-            ;;;     (define c-name (fix-name (gensym (format "constraint~a" n))))
-            ;;;     (printf "~a~a: ~a;\n" indent c-name c))
-            ;;;   (printf "\n"))
-            (unless (empty? (unbox (*defs*)))
-              (printf "Definitions\n")
-              (for ([def (reverse (unbox (*defs*)))])
-                (printf "~a~a;\n" indent def))
-              (printf "\n"))
-            (printf "Expressions\n~a~a ~a= ~a;\n"
-                    indent (fix-name expr-name) (round->fptaylor (ctx-props ctx)) expr-body)
-            (printf "}\n"))))))
+    ; Main expression
+    (define expr-body (expr->fptaylor body* #:ctx ctx* #:inexact-scale inexact-scale))
+    ; Ranges of variables
+    (define var-ranges (condition->range-table pre))
+    (define arg-strings
+      (for/list ([var args] [var-name var-names])
+        (define range
+          (cond
+            [(and var-ranges (hash-has-key? var-ranges var)) (dict-ref var-ranges var)]
+            [else (make-interval -inf.0 +inf.0)]))
+        (unless (nonempty-bounded? range)
+          (error 'core->fptaylor "Bad range for ~a in ~a (~a)" var expr-name range))
+        (unless (= (length range) 1)
+          (print range)
+          (error 'core->fptaylor "FPTaylor only accepts one sampling range"))
+        (match-define (interval l u l? u?) (car range))
+        (format "~a~a ~a in [~a, ~a];" indent (round->fptaylor (ctx-props ctx)) var-name
+                (format-number l) (format-number u))))
+    ; Other constraints
+    ;;; (define constraints
+    ;;;   (map (curry expr->fptaylor #:type 'real) (select-constraints pre)))
+    (with-output-to-string
+      (λ ()
+        (printf "{\n")
+        (unless (empty? arg-strings)
+          (printf "Variables\n~a\n\n" (string-join arg-strings "\n")))
+        ;;; (unless (empty? constraints)
+          ;;;   (printf "Constraints\n")
+          ;;;   (for ([c constraints] [n (in-naturals)])
+          ;;;     (define c-name (fix-name (gensym (format "constraint~a" n))))
+          ;;;     (printf "~a~a: ~a;\n" indent c-name c))
+          ;;;   (printf "\n"))
+          (unless (empty? (*defs*))
+            (printf "Definitions\n")
+            (for ([def (reverse (*defs*))])
+              (printf "~a~a;\n" indent def))
+            (printf "\n"))
+          (printf "Expressions\n~a~a ~a= ~a;\n"
+                  indent (fix-name expr-name) (round->fptaylor (ctx-props ctx)) expr-body)
+          (printf "}\n")))))
 
 (module+ test
   (for ([prog (in-port (curry read-fpcore "test")
