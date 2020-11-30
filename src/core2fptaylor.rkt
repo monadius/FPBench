@@ -213,7 +213,7 @@
 (define (core->fptaylor prog name
                          #:precision [precision #f]
                          #:var-precision [var-precision #f]
-                         #:indent [indent "\t"])
+                         #:indent [indent "  "])
   (parameterize ([*gensym-fix-name* fix-name]
                  [*used-names* (mutable-set)]
                  [*gensym-collisions* 1]
@@ -224,6 +224,8 @@
         [(list 'FPCore name (list args ...) props ... body) (values name args props body)]))
     (define default-ctx (ctx-update-props (make-compiler-ctx) (append '(:precision real :round nearestEven) props)))
     (define ctx (ctx-reserve-names default-ctx fptaylor-reserved))
+    (when precision
+      (set! ctx (ctx-update-props ctx `(:precision ,precision))))
     (define expr-name 
       (let-values ([(cx name) (ctx-unique-name ctx core-name)])
         (set! ctx cx)
@@ -236,14 +238,12 @@
         (match var
           [`(! ,props ... ,var)
             (define var-props (apply hash-set* (ctx-props ctx) props))
-            (define prec (dict-ref var-props ':precision #f))
+            (define prec (or var-precision (dict-ref var-props ':precision #f)))
             (let-values ([(cx name) (ctx-unique-name ctx* var #:precision prec)])
               (values cx (cons var vars) (cons name names)))]
-          [var (let-values ([(cx name) (ctx-unique-name ctx* var)])
+          [var (let-values ([(cx name) (ctx-unique-name ctx* var #:precision var-precision)])
                 (values cx (cons var vars) (cons name names)))])))
-    ; A special property :var-precision
-    (define var-type
-      (if var-precision var-precision (dict-ref (ctx-props ctx) ':var-precision 'real)))
+    ; Preconditions
     (define pre ((compose canonicalize remove-let)
                  (dict-ref (ctx-props ctx) ':pre 'TRUE)))
     ; Main expression
@@ -286,7 +286,7 @@
             (printf "~a~a;\n" indent def))
           (printf "\n"))
         (printf "Expressions\n~a~a ~a= ~a;\n"
-                indent expr-name (round->fptaylor (ctx-props ctx)) expr-body)
+                indent expr-name (round->fptaylor (ctx-props ctx*)) expr-body)
         (printf "}\n")))))
 
 (define-compiler '("fptaylor" "fpt") (const "") core->fptaylor (const "") fptaylor-supported)
@@ -342,7 +342,7 @@
     (λ (port)
       (port-count-lines! port)
       (for ([prog (in-port (curry read-fpcore "input") port)] [n (in-naturals)])
-        (with-handlers ([exn:fail? (λ (exn) (eprintf "[ERROR]: ~a\n\n" exn))])
+        ;;; (with-handlers ([exn:fail? (λ (exn) (eprintf "[ERROR]: ~a\n\n" exn))])
           (define def-name (format "ex~a" n))
           (define prog-name (if (auto-file-names) def-name (fpcore-name prog def-name)))
           (define progs (fpcore-transform prog
@@ -350,7 +350,7 @@
                                           #:split (split)
                                           #:subexprs (subexprs)
                                           #:split-or (split-or)))
-          (define results (map (curry core->fptaylor def-name
+          (define results (map (curryr core->fptaylor def-name
                                       #:precision (precision)
                                       #:var-precision (var-precision)
                                       #:indent "  ")
@@ -369,7 +369,7 @@
              (define fname (fix-file-name (format "~a.txt" prog-name)))
              (call-with-output-file (build-path (out-path) fname) #:exists 'replace
                (λ (p) (for ([r results])
-                        (if multiple-results (fprintf p "{\n~a}\n\n" r) (fprintf p "~a" r)))))]
-            [else (for ([r results]) (printf "{\n~a}\n\n" r))])
-          ))))
+                        (if multiple-results (fprintf p "~a\n" r) (fprintf p "~a" r)))))]
+            [else (for ([r results]) (printf "~a\n" r))])
+          )))
   ))
