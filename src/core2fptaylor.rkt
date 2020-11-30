@@ -130,6 +130,7 @@
                       (expr->fptaylor val #:ctx ctx #:inexact-scale inexact-scale)))
             cx)))
      (expr->fptaylor body #:ctx ctx* #:inexact-scale inexact-scale)]
+
     [`(let* ([,vars ,vals] ...) ,body)
       (define ctx*
         (for/fold ([ctx* ctx]) ([var vars] [val vals])
@@ -138,10 +139,23 @@
                       (expr->fptaylor val #:ctx ctx* #:inexact-scale inexact-scale)))
             cx)))
      (expr->fptaylor body #:ctx ctx* #:inexact-scale inexact-scale)]
+
     [`(! ,props ... ,body)
-      (expr->fptaylor body #:ctx ctx #:inexact-scale inexact-scale)]
-    ; Ignore all casts
-    [`(cast ,body) (expr->fptaylor body #:ctx ctx #:inexact-scale inexact-scale)]
+      (define cur-rounding (round->fptaylor (ctx-props ctx)))
+      (define new-rounding (round->fptaylor (apply hash-set* #hash() props)))
+      (define body* (expr->fptaylor body #:ctx (ctx-update-props ctx props) #:inexact-scale inexact-scale))
+      (if (equal? cur-rounding new-rounding)
+          body*
+          (let-values ([(ctx* tmp-name) (ctx-random-name ctx)])
+            (add-def (format "~a ~a= ~a" tmp-name new-rounding body*))
+            (format "no_rnd(~a)" tmp-name)))]
+
+    [`(cast ,body)
+      (define rounding (round->fptaylor (ctx-props ctx)))
+      (define body* (expr->fptaylor body #:ctx ctx #:inexact-scale inexact-scale))
+      (let-values ([(ctx* tmp-name) (ctx-random-name ctx)])
+        (add-def (format "~a ~a= ~a" tmp-name rounding body*))
+        tmp-name)]
 
     [(list (? operator? operator) args ...)
      (define args-c
@@ -162,7 +176,15 @@
      (format "~a(~a)" (round->fptaylor (ctx-props ctx)) (constant->fptaylor expr))]
     [(? hex?) (number->fptaylor (hex->racket expr) (ctx-props ctx))]
     [(? number?) (number->fptaylor expr (ctx-props ctx))]
-    [(? symbol?) (ctx-lookup-name ctx expr)]))
+
+    [(? symbol?)
+      (let* ([cur-prec (ctx-lookup-prop ctx ':precision 'real)]
+             [prec (ctx-lookup-prec ctx expr)]
+             [name (ctx-lookup-name ctx expr)])
+        (if (equal? cur-prec prec)
+            name
+            (format "no_rnd(~a)" (ctx-lookup-name ctx expr))))]
+))
 
 ; This function should be called after remove-let and canonicalize
 ; (negations should be removed)
@@ -231,30 +253,32 @@
           (print range)
           (error 'core->fptaylor "FPTaylor only accepts one sampling range"))
         (match-define (interval l u l? u?) (car range))
-        (format "~a~a ~a in [~a, ~a];" indent (round->fptaylor (ctx-props ctx)) var-name
+        (define prec (ctx-lookup-prec ctx* var))
+        (format "~a~a ~a in [~a, ~a];" indent (prec->fptaylor prec) var-name
                 (format-number l) (format-number u))))
     ; Other constraints
-    ;;; (define constraints
-    ;;;   (map (curry expr->fptaylor #:type 'real) (select-constraints pre)))
+    ; TODO: inexact-scale is not given to prevent generation of intermediate definitions
+    (define constraints
+      (map (curry expr->fptaylor #:ctx (ctx-update-props ctx* '(:precision real))) (select-constraints pre)))
     (with-output-to-string
       (λ ()
         (printf "{\n")
         (unless (empty? arg-strings)
           (printf "Variables\n~a\n\n" (string-join arg-strings "\n")))
-        ;;; (unless (empty? constraints)
-          ;;;   (printf "Constraints\n")
-          ;;;   (for ([c constraints] [n (in-naturals)])
-          ;;;     (define c-name (fix-name (gensym (format "constraint~a" n))))
-          ;;;     (printf "~a~a: ~a;\n" indent c-name c))
-          ;;;   (printf "\n"))
-          (unless (empty? (*defs*))
-            (printf "Definitions\n")
-            (for ([def (reverse (*defs*))])
-              (printf "~a~a;\n" indent def))
-            (printf "\n"))
-          (printf "Expressions\n~a~a ~a= ~a;\n"
-                  indent (fix-name expr-name) (round->fptaylor (ctx-props ctx)) expr-body)
-          (printf "}\n")))))
+        (unless (empty? constraints)
+          (printf "Constraints\n")
+          (for ([c constraints] [n (in-naturals)])
+            (define-values (_ c-name) (ctx-unique-name ctx* (format "constraint~a" n)))
+            (printf "~a~a: ~a;\n" indent c-name c))
+          (printf "\n"))
+        (unless (empty? (*defs*))
+          (printf "Definitions\n")
+          (for ([def (reverse (*defs*))])
+            (printf "~a~a;\n" indent def))
+          (printf "\n"))
+        (printf "Expressions\n~a~a ~a= ~a;\n"
+                indent expr-name (round->fptaylor (ctx-props ctx)) expr-body)
+        (printf "}\n")))))
 
 (module+ test
   (for ([prog (in-port (curry read-fpcore "test")
