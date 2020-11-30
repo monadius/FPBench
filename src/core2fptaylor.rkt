@@ -2,7 +2,9 @@
 
 (require "common.rkt" "compilers.rkt" "supported.rkt")
 (require "fpcore-reader.rkt" "fpcore-extra.rkt" "range-analysis.rkt")
-(provide core->fptaylor fptaylor-supported)
+(provide core->fptaylor fptaylor-supported *fptaylor-inexact-scale*)
+
+(define *fptaylor-inexact-scale* (make-parameter 1))
 
 (define fptaylor-supported 
   (supported-list
@@ -211,7 +213,6 @@
 (define (core->fptaylor prog name
                          #:precision [precision #f]
                          #:var-precision [var-precision #f]
-                         #:inexact-scale [inexact-scale 1]
                          #:indent [indent "\t"])
   (parameterize ([*gensym-fix-name* fix-name]
                  [*used-names* (mutable-set)]
@@ -238,7 +239,7 @@
     (define pre ((compose canonicalize remove-let)
                  (dict-ref (ctx-props ctx) ':pre 'TRUE)))
     ; Main expression
-    (define expr-body (expr->fptaylor body #:ctx ctx* #:inexact-scale inexact-scale))
+    (define expr-body (expr->fptaylor body #:ctx ctx* #:inexact-scale (*fptaylor-inexact-scale*)))
     ; Ranges of variables
     (define var-ranges (condition->range-table pre))
     (define arg-strings
@@ -280,6 +281,8 @@
                 indent expr-name (round->fptaylor (ctx-props ctx)) expr-body)
         (printf "}\n")))))
 
+(define-compiler '("fptaylor" "fpt") (const "") core->fptaylor (const "") fptaylor-supported)
+
 (module+ test
   (for ([prog (in-port (curry read-fpcore "test")
                        (open-input-file "../benchmarks/fptaylor-tests.fpcore"))])
@@ -298,7 +301,6 @@
   (define subexprs (make-parameter #f))
   (define split (make-parameter #f))
   (define unroll (make-parameter #f))
-  (define inexact-scale (make-parameter 1))
 
   (command-line
    #:program "core2fptaylor.rkt"
@@ -316,7 +318,7 @@
    ["--var-precision" prec "The precision of input variables (overrides the :var-precision property)"
                       (var-precision (string->symbol prec))]
    ["--scale" scale "The scale factor for operations which are not correctly rounded"
-              (inexact-scale (string->number scale))]
+              (*fptaylor-inexact-scale* (string->number scale))]
    ["--split-or" "Convert preconditions to DNF and create separate FPTaylor tasks for all conjunctions"
                  (split-or #t)]
    ["--subexprs" "Create FPTaylor tasks for all subexpressions"
@@ -343,7 +345,6 @@
           (define results (map (curry core->fptaylor def-name
                                       #:precision (precision)
                                       #:var-precision (var-precision)
-                                      #:inexact-scale (inexact-scale)
                                       #:indent "  ")
                                progs))
           (define multiple-results (> (length results) 1))
