@@ -50,9 +50,9 @@
 
 ; Takes a given symbol maps it to a unique, printable name and returns both
 ; the updated ctx struct and the name
-(define (ctx-unique-name ctx name)
+(define (ctx-unique-name ctx name #:precision [precision #f])
   (let ([unique (gensym name)]
-        [prec   (dict-ref (compiler-ctx-props ctx) ':precision 'binary64)])
+        [prec   (or precision (dict-ref (compiler-ctx-props ctx) ':precision 'binary64))])
     (values 
       (compiler-ctx (dict-set (compiler-ctx-name-map ctx) name unique) 
                     (dict-set (compiler-ctx-prec-map ctx) name prec)
