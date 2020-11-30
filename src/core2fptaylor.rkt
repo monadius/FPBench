@@ -228,11 +228,19 @@
       (let-values ([(cx name) (ctx-unique-name ctx core-name)])
         (set! ctx cx)
         name))
-    (define-values (ctx* var-names)
-      (for/fold ([ctx* ctx] [names '()] #:result (values ctx* (reverse names)))
+    ; Arguments
+    (define-values (ctx* vars var-names)
+      (for/fold ([ctx* ctx] [vars '()] [names '()] 
+                 #:result (values ctx* (reverse vars) (reverse names)))
                 ([var args])
-        (let-values ([(cx name) (ctx-unique-name ctx* var)])
-          (values cx (cons name names)))))
+        (match var
+          [`(! ,props ... ,var)
+            (define var-props (apply hash-set* (ctx-props ctx) props))
+            (define prec (dict-ref var-props ':precision #f))
+            (let-values ([(cx name) (ctx-unique-name ctx* var #:precision prec)])
+              (values cx (cons var vars) (cons name names)))]
+          [var (let-values ([(cx name) (ctx-unique-name ctx* var)])
+                (values cx (cons var vars) (cons name names)))])))
     ; A special property :var-precision
     (define var-type
       (if var-precision var-precision (dict-ref (ctx-props ctx) ':var-precision 'real)))
@@ -243,7 +251,7 @@
     ; Ranges of variables
     (define var-ranges (condition->range-table pre))
     (define arg-strings
-      (for/list ([var args] [var-name var-names])
+      (for/list ([var vars] [var-name var-names])
         (define range
           (cond
             [(and var-ranges (hash-has-key? var-ranges var)) (dict-ref var-ranges var)]
