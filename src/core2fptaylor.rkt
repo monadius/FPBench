@@ -77,6 +77,7 @@
      (format "~a(~a)" (operator->fptaylor f) (string-join args ", "))]))
 
 (define/match (prec->fptaylor prec)
+  [(#f) ""]
   [('real) "real"]
   [('binary16) "float16"]
   [('binary32) "float32"]
@@ -98,6 +99,7 @@
   (define rm (rm->fptaylor (dict-ref props ':round 'nearestEven)))
   (define bits
     (match prec
+      [#f "undefined"]
       ['real ""]
       ['binary16 "16"]
       ['binary32 "32"]
@@ -105,8 +107,9 @@
       ['binary128 "128"]
       [_ (error 'round->fptaylor "Unsupported precision ~a" prec)]))
   (cond
+    [(equal? bits "undefined") "rnd"]
     [(equal? bits "") ""]
-    [(and (eq? rm "ne") (= scale 1)) (format "rnd~a" bits)]
+    [(and (equal? rm "ne") (= scale 1)) (format "rnd~a" bits)]
     [else (format "rnd[~a,~a,~a]" bits rm scale)]))
 
 (define (number->fptaylor expr props)
@@ -222,7 +225,7 @@
       (match prog
         [(list 'FPCore (list args ...) props ... body) (values name args props body)]
         [(list 'FPCore name (list args ...) props ... body) (values name args props body)]))
-    (define default-ctx (ctx-update-props (make-compiler-ctx) (append '(:precision real :round nearestEven) props)))
+    (define default-ctx (ctx-update-props (make-compiler-ctx) (append `(:precision ,#f :round nearestEven) props)))
     (define ctx (ctx-reserve-names default-ctx fptaylor-reserved))
     (when precision
       (set! ctx (ctx-update-props ctx `(:precision ,precision))))
