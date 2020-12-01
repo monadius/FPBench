@@ -50,8 +50,8 @@
      (cond [(< u1 u2) u1?]
            [(= u1 u2) (and u1? u2?)]
            [(> u1 u2) u2?]))
-    (define l (max l1 l2))
-    (define u (min u1 u2))
+    (define l (exact-max l1 l2))
+    (define u (exact-min u1 u2))
 
     (make-interval l u l? u?)]
    [else #f]))
@@ -87,8 +87,8 @@
      (cond [(< u1 u2) u2?]
            [(= u1 u2) (or u1? u2?)]
            [(> u1 u2) u1?]))
-    (define l (min l1 l2))
-    (define u (max u1 u2))
+    (define l (exact-min l1 l2))
+    (define u (exact-max u1 u2))
 
     (make-interval l u l? u?)]
    [interval1 interval1]
