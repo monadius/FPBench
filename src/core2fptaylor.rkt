@@ -230,7 +230,7 @@
     (when precision
       (set! ctx (ctx-update-props ctx `(:precision ,precision))))
     (define expr-name 
-      (let-values ([(cx name) (ctx-unique-name ctx core-name)])
+      (let-values ([(cx name) (ctx-unique-name ctx (ctx-lookup-prop ctx ':name core-name))])
         (set! ctx cx)
         name))
     ; Arguments
